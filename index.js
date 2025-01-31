@@ -1,101 +1,65 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const bodyParser = require("body-parser");
+const express = require('express');
+const bodyParser = require('body-parser');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = 3000;
 
-// Middleware
 app.use(bodyParser.json());
 
-// MongoDB Connection
-mongoose.connect("mongodb://127.0.0.1:27017/airquality", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
-const db = mongoose.connection;
-db.on("error", console.error.bind(console, "Connection error:"));
-db.once("open", () => {
-  console.log("Connected to MongoDB");
+let sensorData = [];
+
+app.get('/', (req, res) => {
+    res.send('Welcome to the Sensor Data API!');
 });
 
-// Mongoose Schema & Model
-const sensorDataSchema = new mongoose.Schema({
-  nox: { type: Number, required: true },
-  nh3: { type: Number, required: true },
-  co2: { type: Number, required: true },
-  timestamp: { type: Number, default: Date.now },
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
 });
 
-const SensorData = mongoose.model("SensorData", sensorDataSchema);
-
-// Routes
-
-// 1. Create new sensor data
-app.post("/sensor-data", async (req, res) => {
-  try {
-    const data = new SensorData(req.body);
-    const savedData = await data.save();
-    res.status(201).json(savedData);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+app.get('/sensor-data', (req, res) => {
+    res.json(sensorData);
 });
 
-// 2. Get all sensor data
-app.get("/sensor-data", async (req, res) => {
-  try {
-    const data = await SensorData.find();
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 3. Get single sensor data by ID
-app.get("/sensor-data/:id", async (req, res) => {
-  try {
-    const data = await SensorData.findById(req.params.id);
-    if (!data) {
-      return res.status(404).json({ error: "Data not found" });
+app.post('/sensor-data', (req, res) => {
+    const { nox, nh3, co2 } = req.body; 
+    if (!nox || !nh3 || !co2) { 
+        return res.status(400).json({ error: 'All fields (nox, nh3, co2) are required!' });
     }
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// 4. Update sensor data by ID
-app.put("/sensor-data/:id", async (req, res) => {
-  try {
-    const updatedData = await SensorData.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
-    if (!updatedData) {
-      return res.status(404).json({ error: "Data not found" });
+    const newEntry = {
+        id: uuidv4(),
+        nox,
+        nh3,
+        co2,
+        timestamp: Date.now(),
+    };
+
+    sensorData.push(newEntry);
+    res.status(201).json(newEntry);
+});
+app.get('/sensor-data/:id', (req, res) => {
+    const id = req.params.id; // Keep id as a string
+    const entry = sensorData.find(data => data.id === id);
+
+    if (!entry) {
+        return res.status(404).json({ error: 'Data not found!' });
     }
-    res.json(updatedData);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+
+    res.json(entry);
 });
 
-// 5. Delete sensor data by ID
-app.delete("/sensor-data/:id", async (req, res) => {
-  try {
-    const deletedData = await SensorData.findByIdAndDelete(req.params.id);
-    if (!deletedData) {
-      return res.status(404).json({ error: "Data not found" });
+app.delete('/sensor-data/:id', (req, res) => {
+    const id = req.params.id;
+    const index = sensorData.findIndex(data => data.id === id);
+
+    if (index === -1) {
+        return res.status(404).json({ error: 'Data not found!' });
     }
-    res.json({ message: "Data deleted successfully" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// Start the server
+    sensorData.splice(index, 1);
+    res.json({ message: 'Data deleted successfully!' });
+});
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
